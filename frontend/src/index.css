@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #F6FAF9;
+  --surface: #FFFFFF;
+  --raised: #F0F5F3;
+  --ink: #0E1B17;
+  --ink-muted: #55665F;
+  --ink-faint: #94A39D;
+  --line: #E2E9E6;
+  --accent: #0E9C86;
+  --accent-dim: #0E9C8622;
+  --accent-glow: #0E9C8655;
+  --amber: #C97A3D;
+}
+
+.dark {
+  --bg: #0A1210;
+  --surface: #101A17;
+  --raised: #16221E;
+  --ink: #EAF3F0;
+  --ink-muted: #93A69F;
+  --ink-faint: #5C6E67;
+  --line: #1E2C27;
+  --accent: #2DD4BF;
+  --accent-dim: #2DD4BF22;
+  --accent-glow: #2DD4BF55;
+  --amber: #E5A05A;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+::selection { background: var(--accent); color: var(--bg); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.trace-track {
+  background: linear-gradient(90deg, var(--accent-dim), transparent);
+}
+
+.mono-num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native <select> dropdowns inherit OS/browser theme for the closed control,
+   but the popup option list needs explicit colors or it renders white text
+   on a white background (or vice versa) depending on OS theme. */
+select {
+  color: var(--ink);
+  background-color: var(--surface);
+}
+select option {
+  color: var(--ink);
+  background-color: var(--surface);
+}

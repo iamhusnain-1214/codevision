@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# env files
+.env
+.env.local
+.env.production
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
