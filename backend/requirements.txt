@@ -4,6 +4,7 @@ supabase
 python-dotenv
 pygdbmi
 requests
+gunicorn
 
 # C++ tracing (tracer_custom_cpp.py) also needs these installed as OS
 # packages, not pip packages — on Debian/Ubuntu:
