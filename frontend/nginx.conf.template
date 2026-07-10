@@ -1,0 +1,14 @@
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # React Router uses client-side routing (e.g. /dashboard, /login,
+    # /auth/callback). Without this fallback, refreshing any route other
+    # than "/" would 404, since nginx would look for an actual file at
+    # that path instead of letting React Router handle it.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
