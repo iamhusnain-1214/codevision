@@ -86,7 +86,17 @@ def _call_gemini(prompt, thinking_level="low", max_output_tokens=2048):
     try:
         candidates = data["candidates"]
         parts = candidates[0]["content"]["parts"]
-        text = "".join(p.get("text", "") for p in parts)
+        # IMPORTANT: with thinkingConfig enabled, Gemini can return a
+        # separate reasoning part tagged "thought": true alongside the
+        # real answer part. Blindly joining every part's text (the old
+        # behavior) glues that internal reasoning prose onto the actual
+        # JSON answer before we ever try to parse it — which breaks
+        # parsing regardless of responseMimeType or how forgiving the
+        # extraction regex is, since the contamination happens upstream
+        # of both. This was the real root cause of "Gemini did not
+        # return valid JSON" (the two_sum sample uses thinking_level
+        # "medium", which is exactly when a thought part shows up).
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
     except (KeyError, IndexError):
         raise GeminiError("Gemini returned an unexpected response shape.")
 
