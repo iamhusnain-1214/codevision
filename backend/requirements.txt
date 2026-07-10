@@ -1,11 +1,10 @@
 flask
 flask-cors
-supabase
+supabase>=2.10.0
 python-dotenv
 pygdbmi
 requests
 gunicorn
-
 # C++ tracing (tracer_custom_cpp.py) also needs these installed as OS
 # packages, not pip packages — on Debian/Ubuntu:
 #   sudo apt-get install -y g++ gdb
