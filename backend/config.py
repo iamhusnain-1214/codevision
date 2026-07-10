@@ -19,8 +19,11 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
+# Fallback provider is Groq (console.groq.com) — NOT xAI's "Grok". Env
+# var names kept as GROK_* to match what's already set in Render; only
+# the actual endpoint/model target Groq's API (see grok_service.py).
 GROK_API_KEY = os.environ.get("GROK_API_KEY", "")
-GROK_MODEL = os.environ.get("GROK_MODEL", "grok-code-fast-1")
+GROK_MODEL = os.environ.get("GROK_MODEL", "llama-3.3-70b-versatile")
 
-# --- Redis (caching / rate-limit quotas, added in a later step) --------
+# --- Redis (caching / rate-limit quotas) --------------------------------
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")

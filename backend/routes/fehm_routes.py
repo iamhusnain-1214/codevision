@@ -2,14 +2,15 @@
 routes/fehm_routes.py — /fehm/explain-problem, /fehm/analyze-complexity, /fehm/debug-logic
 
 Fehm (فہم — Urdu for "understanding") is CodeVision's AI logic coach.
-This blueprint is intentionally thin: all prompt-building and Gemini
-calls live in gemini_service.py. This file just validates input, calls
-the right service, and shapes the HTTP response.
+This blueprint is intentionally thin: it goes through ai_orchestrator.py,
+which owns the cache -> Gemini -> Grok fallback chain. This file just
+validates input and shapes the HTTP response — same as before, only the
+import changed.
 """
 
 from flask import Blueprint, request, jsonify
 import auth
-from gemini_service import explain_problem, compute_complexity, debug_logic, GeminiError
+import ai_orchestrator
 from complexity_analyzer import analyze_complexity
 
 fehm_bp = Blueprint("fehm_bp", __name__)
@@ -26,8 +27,8 @@ def explain_problem_route(current_user_id):
         return jsonify({"error": "Problem text is too long (6000 char max)"}), 400
 
     try:
-        result = explain_problem(problem)
-    except GeminiError as e:
+        result = ai_orchestrator.explain_problem(problem)
+    except ai_orchestrator.AIServiceError as e:
         return jsonify({"error": str(e)}), 502
 
     return jsonify(result)
@@ -39,7 +40,8 @@ def analyze_complexity_route(current_user_id):
     """The authoritative complexity endpoint — Fehm computes the verdict
     itself (accounts for library-call complexity like .sort(), which the
     old pure-AST analyzer missed). The deterministic analyzer only runs
-    as a fallback if Gemini is unreachable, clearly labeled as such.
+    as a fallback if BOTH Gemini and Grok are unreachable, clearly
+    labeled as such.
     """
     data = request.get_json(force=True)
     code = data.get("code", "")
@@ -51,10 +53,9 @@ def analyze_complexity_route(current_user_id):
         return jsonify({"error": f"Unsupported language '{language}'"}), 400
 
     try:
-        result = compute_complexity(code, language)
-        result["source"] = "fehm"
+        result = ai_orchestrator.compute_complexity(code, language)
         return jsonify(result)
-    except GeminiError as e:
+    except ai_orchestrator.AIServiceError as e:
         fallback = analyze_complexity(code, language)
         if "error" in fallback:
             return jsonify({"error": str(e)}), 502
@@ -83,8 +84,8 @@ def debug_logic_route(current_user_id):
         return jsonify({"error": f"Unsupported language '{language}'"}), 400
 
     try:
-        result = debug_logic(code, language, expected, actual)
-    except GeminiError as e:
+        result = ai_orchestrator.debug_logic(code, language, expected, actual)
+    except ai_orchestrator.AIServiceError as e:
         return jsonify({"error": str(e)}), 502
 
     return jsonify(result)

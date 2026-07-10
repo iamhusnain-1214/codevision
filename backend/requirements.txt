@@ -5,6 +5,7 @@ python-dotenv
 pygdbmi
 requests
 gunicorn
+redis
 # C++ tracing (tracer_custom_cpp.py) also needs these installed as OS
 # packages, not pip packages — on Debian/Ubuntu:
 #   sudo apt-get install -y g++ gdb
