@@ -24,7 +24,21 @@ app.register_blueprint(fehm_bp)
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    # A plain Flask-only health check would keep Render awake but NOT
+    # Supabase -- Supabase pauses free-tier projects after ~7 days with
+    # zero API activity, regardless of whether Render itself is up. This
+    # lightweight query touches Supabase on every health check, so a
+    # single external uptime ping (e.g. cron-job.org hitting this URL
+    # every few days) keeps both services alive together.
+    supabase_status = "unknown"
+    try:
+        import db
+        db.get_client().table("profiles").select("id").limit(1).execute()
+        supabase_status = "ok"
+    except Exception as e:
+        supabase_status = f"error: {e}"
+
+    return jsonify({"status": "ok", "supabase": supabase_status})
 
 
 if __name__ == "__main__":
