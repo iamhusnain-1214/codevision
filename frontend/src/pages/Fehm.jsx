@@ -34,19 +34,14 @@ the array that add up to the target and return their indices. Assume exactly \
 one solution exists, and you may not use the same element twice.`
 
 const SAMPLE_BUG = {
-  code: `def two_sum(nums, target):
-    left, right = 0, len(nums) - 1
-    while left < right:
-        s = nums[left] + nums[right]
-        if s == target:
-            return [left, right]
-        elif s < target:
-            right -= 1
-        else:
-            left += 1
-    return []`,
-  expected: '[0, 1] for nums=[1,2,3,9], target=3',
-  actual: '[] (empty list)',
+  code: `def count_positives(nums):
+    count = 0
+    for i in range(len(nums)):
+        if nums[i] > 0:
+            count += 1
+        return count`,
+  expected: '3 for nums=[1, -2, 4, -5, 6]',
+  actual: '1',
 }
 
 function ModeTabs({ mode, setMode }) {
