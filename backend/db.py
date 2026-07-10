@@ -17,6 +17,7 @@ SCHEMA (run once in Supabase SQL Editor — see supabase_schema.sql):
 """
 
 import json
+import time
 from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_SERVICE_KEY
 
@@ -29,18 +30,28 @@ def get_client() -> Client:
 
 # ---------------------------------------------------------------- profiles
 
-def create_profile(user_id: str, username: str):
+def create_profile(user_id: str, username: str, retries: int = 3):
     """Called right after Supabase Auth signup succeeds, to store the
-    app-specific fields (username, is_premium) tied to the new auth user."""
-    try:
-        result = _client.table("profiles").insert({
-            "id": user_id,
-            "username": username,
-        }).execute()
-        return result.data[0] if result.data else None
-    except Exception as e:
-        print("create_profile error:", e)
-        return None
+    app-specific fields (username, is_premium) tied to the new auth user.
+
+    Retries on failure: Supabase's project has occasionally shown transient
+    RLS/auth blips (likely tied to JWT signing key rotation on their end)
+    where the service-role key is briefly not recognized. A short retry
+    with backoff makes signup resilient to that instead of surfacing
+    "profile setup failed" to the user on what's really a momentary glitch.
+    """
+    for attempt in range(retries):
+        try:
+            result = _client.table("profiles").insert({
+                "id": user_id,
+                "username": username,
+            }).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            print(f"create_profile error (attempt {attempt + 1}/{retries}):", e)
+            if attempt < retries - 1:
+                time.sleep(1.5 * (attempt + 1))  # 1.5s, then 3s
+    return None
 
 
 def get_profile_by_username(username: str):
