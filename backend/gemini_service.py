@@ -55,6 +55,13 @@ def _call_gemini(prompt, thinking_level="low", max_output_tokens=2048):
             "temperature": 0.4,
             "maxOutputTokens": max_output_tokens,
             "thinkingConfig": {"thinkingLevel": thinking_level},
+            # Forces Gemini to emit ONLY a valid JSON value. Without this,
+            # a model confident about a very famous problem (e.g. the
+            # two_sum sample bug) can ignore the "don't add extra text"
+            # prompt instruction and append trailing prose/fences, which
+            # broke the old greedy _extract_json fallback below. This
+            # fixes it at the source instead of just patching the parser.
+            "responseMimeType": "application/json",
         },
     }
 
@@ -89,17 +96,64 @@ def _call_gemini(prompt, thinking_level="low", max_output_tokens=2048):
     return text
 
 
+def _find_balanced_json_object(text):
+    """Scans for the first top-level {...} object using actual brace
+    depth-counting (respecting quoted strings), instead of a greedy regex.
+
+    The old greedy regex (opening brace .* closing brace, DOTALL) matched
+    from the FIRST '{' to the LAST '}' in the whole string. That's fine if the response is
+    pure JSON, but if Gemini ever appends anything after the JSON block
+    (extra commentary, a second code fence, an example snippet with its
+    own braces — which becomes more likely on problems the model is very
+    confident about, like the two_sum sample bug), the greedy match
+    swallows that trailing content's braces too and produces something
+    json.loads() chokes on. Depth-counting stops at the FIRST object's own
+    closing brace, so trailing junk after it is simply ignored.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
 def _extract_json(text):
-    """Gemini is instructed to return raw JSON, but models sometimes wrap
+    """Gemini is instructed to return raw JSON (and the API call now also
+    sets responseMimeType: application/json), but models sometimes wrap
     it in ```json fences anyway — strip those defensively before parsing."""
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.MULTILINE)
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        # Last resort: grab the first {...} block in the text.
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
+        # Last resort: grab just the first balanced {...} object, ignoring
+        # any trailing content Gemini may have appended after it.
+        candidate = _find_balanced_json_object(cleaned)
+        if candidate:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
         raise GeminiError("Gemini did not return valid JSON.")
 
 

@@ -63,14 +63,44 @@ BINARY_NAME = "user_program.exe"  # the .exe suffix is required on Windows
                                   # at the exact file g++ actually produced.
 
 
-def _limit_resources():
-    """preexec_fn for the compiled binary: cap CPU time and virtual memory
-    so a runaway or hostile program can't consume the host. This runs in
-    the forked child before exec, same spirit as tracer_custom.py's
-    MAX_STEPS guard for the Python path."""
-    import resource
-    resource.setrlimit(resource.RLIMIT_CPU, (5, 5))
-    resource.setrlimit(resource.RLIMIT_AS, (512 * 1024 * 1024, 512 * 1024 * 1024))
+CPU_LIMIT_SECONDS = 5       # hard CPU-time ceiling for the compiled binary
+MEM_LIMIT_KB = 512 * 1024   # 512MB virtual address space ceiling
+FSIZE_LIMIT_KB = 10 * 1024  # 10MB max file size the binary can write
+NPROC_LIMIT = 64            # max processes/threads — blocks fork bombs
+NOFILE_LIMIT = 64           # max open file descriptors
+
+
+def _write_exec_wrapper(workdir):
+    """Writes a small shell script that applies `ulimit` caps and then
+    execs whatever gdb passes it, and points gdb at it via
+    `set exec-wrapper`. This is the ONLY way to actually apply resource
+    limits to the traced binary: gdb launches the inferior itself (via
+    `-interpreter-exec console "run < /dev/null"`), not via
+    subprocess.Popen, so a Python-side `preexec_fn` (the previous,
+    never-actually-wired-up `_limit_resources` in this file) never runs —
+    it has no hook into gdb's own fork/exec path. `set exec-wrapper` is
+    gdb's supported mechanism for inserting a wrapper between itself and
+    the inferior, so this is where enforcement has to live.
+
+    POSIX only (Linux/macOS) — this is what the production Docker
+    container (Render, Debian) runs on, which is the actual boundary
+    exposed to untrusted input. Local Windows/MSYS2 dev doesn't get this
+    wrapper (see caller), matching the existing platform split elsewhere
+    in this codebase.
+    """
+    wrapper_path = os.path.join(workdir, "sandbox_wrapper.sh")
+    with open(wrapper_path, "w", newline="\n") as f:
+        f.write(
+            "#!/bin/sh\n"
+            f"ulimit -t {CPU_LIMIT_SECONDS}\n"
+            f"ulimit -v {MEM_LIMIT_KB}\n"
+            f"ulimit -f {FSIZE_LIMIT_KB}\n"
+            f"ulimit -u {NPROC_LIMIT}\n"
+            f"ulimit -n {NOFILE_LIMIT}\n"
+            'exec "$@"\n'
+        )
+    os.chmod(wrapper_path, 0o755)
+    return wrapper_path
 
 
 def _classify_cpp_type(type_str):
@@ -506,9 +536,20 @@ def run_custom_cpp_trace(code):
         with open(source_path, "w") as f:
             f.write(combined_source)
 
+        def _limit_compiler():
+            # POSIX only. Caps g++'s own memory so a pathological input
+            # (e.g. runaway template metaprogramming) can't exhaust host
+            # RAM during compilation itself, before the binary even runs.
+            # This subprocess is spawned directly via subprocess.run, so
+            # (unlike the gdb-launched binary below) preexec_fn actually
+            # has a hook to run in.
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS, (MEM_LIMIT_KB * 1024, MEM_LIMIT_KB * 1024))
+
         compile_proc = subprocess.run(
             ["g++", "-g", "-O0", "-std=c++17", "-o", binary_path, source_path],
             capture_output=True, text=True, timeout=COMPILE_TIMEOUT,
+            preexec_fn=_limit_compiler if os.name != "nt" else None,
         )
         if compile_proc.returncode != 0:
             # Trim gdb/g++ paths back to the filename the user actually sees,
@@ -584,6 +625,17 @@ def _trace_binary(binary_path, source_path):
             raise RuntimeError(error)
 
         send("-break-insert main")
+
+        # Apply resource limits to the actual traced binary — see
+        # _write_exec_wrapper's docstring for why this has to go through
+        # gdb's exec-wrapper mechanism rather than a Python preexec_fn.
+        # POSIX-only: on Windows/MSYS2 dev there's no ulimit-based
+        # sandboxing here, but the real exposure boundary is the Linux
+        # Docker container in production, which does get it.
+        if os.name != "nt":
+            wrapper_path = _write_exec_wrapper(os.path.dirname(binary_path)).replace("\\", "/")
+            send(f'-gdb-set exec-wrapper "{wrapper_path}"')
+
         # Redirect the inferior's stdin from the OS's "nothing" device: a
         # `cin >>` in user code would otherwise block forever waiting for
         # input gdb never provides. Uses the console form since -exec-run
