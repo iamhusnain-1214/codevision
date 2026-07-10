@@ -13,6 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Force Python to flush stdout/stderr immediately instead of buffering --
+# without this, print() statements (like our error logging in auth.py/db.py)
+# can sit in a buffer and never show up in Render's log stream in real time,
+# making debugging nearly impossible.
+ENV PYTHONUNBUFFERED=1
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
