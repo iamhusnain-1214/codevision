@@ -3,6 +3,8 @@ app.py — the Flask app entry point. Registers all route blueprints.
 No business logic lives here directly.
 """
 
+import time
+
 from flask import Flask, jsonify
 from flask_cors import CORS
 
@@ -22,21 +24,37 @@ app.register_blueprint(custom_bp)
 app.register_blueprint(fehm_bp)
 
 
+# The cron-job.org pinger still hits this route every 10 minutes -- that
+# cadence is what keeps Render itself from cold-starting, and that part is
+# unchanged. What changed is what happens to Supabase on each of those
+# pings: touching Supabase's DB on every single one (every 10 min, ~144
+# times/day) turned out to be a plausible contributor to the intermittent
+# "row-level security policy" errors on signup -- the shared client's
+# pooled connection getting touched on a steady 10-minute idle/use cycle
+# is exactly the pattern that can cause a pooled connection to go stale
+# on Supabase's side (Supavisor). Supabase only actually needs to see
+# activity once every several days to avoid its own 7-day auto-pause, so
+# there's no reason to hit it anywhere near that often just for keep-alive.
+_last_supabase_ping = {"time": 0}
+SUPABASE_PING_INTERVAL = 3 * 60 * 60  # touch Supabase at most once every 3 hours
+
+
 @app.route("/health")
 def health():
-    # A plain Flask-only health check would keep Render awake but NOT
-    # Supabase -- Supabase pauses free-tier projects after ~7 days with
-    # zero API activity, regardless of whether Render itself is up. This
-    # lightweight query touches Supabase on every health check, so a
-    # single external uptime ping (e.g. cron-job.org hitting this URL
-    # every few days) keeps both services alive together.
-    supabase_status = "unknown"
-    try:
-        import db
-        db.get_client().table("profiles").select("id").limit(1).execute()
-        supabase_status = "ok"
-    except Exception as e:
-        supabase_status = f"error: {e}"
+    # Every request here (every ~10 min via cron) keeps Render's container
+    # itself warm -- that part happens just by Flask responding, no
+    # Supabase call required.
+    supabase_status = "skipped (not due yet)"
+
+    now = time.time()
+    if now - _last_supabase_ping["time"] > SUPABASE_PING_INTERVAL:
+        try:
+            import db
+            db.get_client().table("profiles").select("id").limit(1).execute()
+            supabase_status = "ok"
+            _last_supabase_ping["time"] = now
+        except Exception as e:
+            supabase_status = f"error: {e}"
 
     return jsonify({"status": "ok", "supabase": supabase_status})
 

@@ -44,9 +44,17 @@ def create_profile(user_id: str, username: str, insert_retries: int = 8):
     insert itself with backoff, which is the only operation we've
     actually observed succeeding after a delay.
     """
+    # Uses its own freshly-created client rather than the shared module-level
+    # _client. The shared client's connection pool gets touched every 10
+    # minutes by the /health cron ping -- pooled connections that sit idle
+    # between uses can go stale on Supabase's side (Supavisor), and reusing
+    # one at the wrong moment has been a suspected contributor to the
+    # intermittent RLS failures here. A fresh client per call sidesteps that.
+    fresh_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
     for attempt in range(insert_retries):
         try:
-            result = _client.table("profiles").insert({
+            result = fresh_client.table("profiles").insert({
                 "id": user_id,
                 "username": username,
             }).execute()
