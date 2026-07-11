@@ -30,55 +30,20 @@ def get_client() -> Client:
 
 # ---------------------------------------------------------------- profiles
 
-def _wait_for_auth_user(user_id: str, max_wait_seconds: float = 10.0) -> bool:
-    """Confirms the just-signed-up user is actually resolvable in
-    Supabase's auth system before we try to insert a profile row for
-    them. auth.sign_up() can return a user_id before that user is fully
-    visible everywhere else in Supabase's infrastructure (including to
-    the RLS policy engine on other tables) — inserting immediately can
-    race ahead of that propagation and get rejected with a row-level
-    security error even though the user_id is completely valid.
-
-    Uses the admin API (get_user_by_id), which is a direct, authoritative
-    lookup — not guessing based on insert success/failure.
-    Returns True once the user is confirmed visible, False if we timed
-    out waiting (caller should still attempt the insert as a last resort,
-    since this check itself could rarely be the thing lagging).
-    """
-    start = time.time()
-    delay = 0.4
-    while time.time() - start < max_wait_seconds:
-        try:
-            resp = _client.auth.admin.get_user_by_id(user_id)
-            if resp and resp.user and resp.user.id == user_id:
-                return True
-        except Exception as e:
-            print(f"_wait_for_auth_user check error: {e}")
-        time.sleep(delay)
-        delay = min(delay * 1.5, 2.0)
-    print(f"_wait_for_auth_user: gave up after {max_wait_seconds}s for user {user_id}")
-    return False
-
-
-def create_profile(user_id: str, username: str, insert_retries: int = 5):
+def create_profile(user_id: str, username: str, insert_retries: int = 8):
     """Called right after Supabase Auth signup succeeds, to store the
     app-specific fields (username, is_premium) tied to the new auth user.
 
-    Two layers of protection against the transient "new row violates
-    row-level security policy" error caused by auth-propagation lag:
-
-      1. First, actively confirm the user is resolvable via the admin
-         API before attempting anything — avoids firing the insert
-         into a window where the user isn't fully visible yet.
-      2. Even after that check passes, still retry the insert itself
-         with backoff — a second, independent safety net in case RLS
-         visibility lags slightly behind plain user-lookup visibility.
+    NOTE: an earlier version of this function tried to actively confirm
+    the user was visible via _client.auth.admin.get_user_by_id() before
+    attempting the insert. That call consistently failed with "User not
+    allowed" regardless of timing -- the admin.* namespace doesn't accept
+    our current key the way regular table operations do, so that check
+    was pure dead weight (always failed, wasted ~10s every signup). It
+    has been removed. This function now relies entirely on retrying the
+    insert itself with backoff, which is the only operation we've
+    actually observed succeeding after a delay.
     """
-    user_ready = _wait_for_auth_user(user_id)
-    if not user_ready:
-        print(f"create_profile: proceeding to insert for {user_id} even though "
-              f"readiness check never confirmed — falling back to retry loop.")
-
     for attempt in range(insert_retries):
         try:
             result = _client.table("profiles").insert({
@@ -89,7 +54,7 @@ def create_profile(user_id: str, username: str, insert_retries: int = 5):
         except Exception as e:
             print(f"create_profile error (attempt {attempt + 1}/{insert_retries}):", e)
             if attempt < insert_retries - 1:
-                time.sleep(min(1.5 * (attempt + 1), 6))  # 1.5s, 3s, 4.5s, 6s, 6s
+                time.sleep(min(1.3 * (attempt + 1), 8))  # 1.3s,2.6s,3.9s,5.2s,6.5s,7.8s,8s,8s
     return None
 
 
