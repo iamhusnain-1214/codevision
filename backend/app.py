@@ -8,11 +8,13 @@ import time
 from flask import Flask, jsonify
 from flask_cors import CORS
 
+import health_state
 from routes.auth_routes import auth_bp
 from routes.trace_routes import trace_bp
 from routes.complexity_routes import complexity_bp
 from routes.custom_routes import custom_bp
 from routes.fehm_routes import fehm_bp
+from routes.admin_routes import admin_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -22,6 +24,7 @@ app.register_blueprint(trace_bp)
 app.register_blueprint(complexity_bp)
 app.register_blueprint(custom_bp)
 app.register_blueprint(fehm_bp)
+app.register_blueprint(admin_bp)
 
 
 # The cron-job.org pinger still hits this route every 10 minutes -- that
@@ -43,7 +46,11 @@ SUPABASE_PING_INTERVAL = 3 * 60 * 60  # touch Supabase at most once every 3 hour
 def health():
     # Every request here (every ~10 min via cron) keeps Render's container
     # itself warm -- that part happens just by Flask responding, no
-    # Supabase call required.
+    # Supabase call required. Recorded unconditionally (not gated by the
+    # Supabase throttle below) so the admin System Health dashboard can
+    # show "last ping" even when this particular hit skipped Supabase.
+    health_state.record_ping()
+
     supabase_status = "skipped (not due yet)"
 
     now = time.time()

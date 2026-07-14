@@ -71,3 +71,27 @@ def me(current_user_id):
     if not profile:
         return jsonify({"error": "Profile not found"}), 404
     return jsonify(profile)
+
+
+@auth_bp.route("/change-password", methods=["POST"])
+@auth.token_required
+def change_password(current_user_id):
+    """Self-serve password change for an already-logged-in user (e.g. a
+    Settings page). Separate from the admin-triggered reset-email flow,
+    which is only a fallback for users who are locked out."""
+    data = request.get_json(force=True)
+    new_password = data.get("new_password")
+
+    if not new_password or len(new_password) < 6:
+        return jsonify({"error": "new_password is required and must be at least 6 characters"}), 400
+
+    auth_header = request.headers.get("Authorization", "")
+    access_token = auth_header.split(" ", 1)[1] if auth_header.startswith("Bearer ") else None
+    if not access_token:
+        return jsonify({"error": "Missing Authorization header"}), 401
+
+    ok, err = auth.change_own_password(access_token, new_password)
+    if not ok:
+        return jsonify({"error": err}), 400
+
+    return jsonify({"message": "Password changed successfully"})

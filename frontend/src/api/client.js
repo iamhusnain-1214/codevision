@@ -67,6 +67,69 @@ export const api = {
 
   debugLogic: (token, code, language, expected, actual) =>
     req('/fehm/debug-logic', { method: 'POST', token, body: { code, language, expected, actual } }),
+
+  // Self-serve account settings
+  changePassword: (token, newPassword) =>
+    req('/change-password', { method: 'POST', token, body: { new_password: newPassword } }),
+
+  // Algorithm Request Queue (Phase 2 admin panel — user-facing)
+  submitAlgorithmRequest: (token, algorithm_name, target_module, notes) =>
+    req('/algorithm-requests', { method: 'POST', token, body: { algorithm_name, target_module, notes } }),
+
+  listAlgorithmRequests: (token, status) =>
+    req(`/algorithm-requests${status ? `?status=${status}` : ''}`, { token }),
+
+  upvoteAlgorithmRequest: (token, requestId) =>
+    req(`/algorithm-requests/${requestId}/upvote`, { method: 'POST', token }),
+
+  // Admin-only — backend enforces profiles.is_admin, this just calls the route
+  updateAlgorithmRequest: (token, requestId, { status, admin_response } = {}) =>
+    req(`/admin/algorithm-requests/${requestId}`, { method: 'PATCH', token, body: { status, admin_response } }),
+
+  // Algorithm CRUD (Phase 2 admin panel)
+  // Public read — no token needed, only ever returns published algorithms
+  listPublicAlgorithms: (module) =>
+    req(`/algorithms${module ? `?module=${module}` : ''}`),
+
+  // Admin — sees drafts too
+  listAllAlgorithms: (token, module) =>
+    req(`/admin/algorithms${module ? `?module=${module}` : ''}`, { token }),
+
+  createAlgorithm: (token, algorithm) =>
+    req('/admin/algorithms', { method: 'POST', token, body: algorithm }),
+
+  updateAlgorithm: (token, id, fields) =>
+    req(`/admin/algorithms/${id}`, { method: 'PATCH', token, body: fields }),
+
+  deleteAlgorithm: (token, id) =>
+    req(`/admin/algorithms/${id}`, { method: 'DELETE', token }),
+
+  // Users Tab (Phase 3 admin panel)
+  listUsers: (token) => req('/admin/users', { token }),
+
+  banUser: (token, userId) =>
+    req(`/admin/users/${userId}/ban`, { method: 'POST', token }),
+
+  unbanUser: (token, userId) =>
+    req(`/admin/users/${userId}/unban`, { method: 'POST', token }),
+
+  resetUserPassword: (token, userId) =>
+    req(`/admin/users/${userId}/reset-password`, { method: 'POST', token }),
+
+  // System Health (Phase 4 admin panel)
+  getSystemHealth: (token) => req('/admin/health', { token }),
+
+  // Unauthenticated -- same route the cron-job.org uptime pinger hits.
+  // Used by the "Wake up backend" button, since just reaching Flask at
+  // all is what matters for a cold Render container, no auth needed.
+  pingHealth: () => req('/health'),
+
+  // Custom Code Moderation (Phase 5 admin panel)
+  listCustomSubmissions: (token, status, limit) =>
+    req(`/admin/custom-submissions?${new URLSearchParams({ ...(status ? { status } : {}), ...(limit ? { limit } : {}) })}`, { token }),
+
+  // Usage & Analytics (Phase 6 admin panel)
+  getAnalytics: (token) => req('/admin/analytics', { token }),
 }
 
 // Reference of what the backend actually supports (routes/trace_routes.py):

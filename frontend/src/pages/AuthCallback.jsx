@@ -3,12 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
 /**
- * Supabase redirects here after the user clicks the email confirmation
- * link, with the session already attached to the URL as a hash fragment:
+ * Supabase redirects here after the user clicks EITHER the signup
+ * confirmation link OR a password-reset link, with the session already
+ * attached to the URL as a hash fragment:
  *   /auth/callback#access_token=...&refresh_token=...&type=signup
+ *   /auth/callback#access_token=...&refresh_token=...&type=recovery
  *
- * We parse that, log the user in immediately via setSession, and bounce
- * to the dashboard — no separate login step required after verifying.
+ * type=signup -> log in immediately, go to dashboard (existing behavior).
+ * type=recovery -> log in via the recovery token, but send them to
+ *   /settings instead -- they still need to actually pick a new password
+ *   there (via the Change Password form), otherwise a "password reset"
+ *   link would just silently log them in and never let them reset anything.
  *
  * IMPORTANT: this route must be added to Supabase's allowed Redirect URLs
  * (Authentication -> URL Configuration), e.g. http://localhost:5173/**
@@ -25,6 +30,7 @@ export default function AuthCallback() {
     const params = new URLSearchParams(hash)
     const accessToken = params.get('access_token')
     const refreshToken = params.get('refresh_token')
+    const type = params.get('type')
 
     if (!accessToken) {
       setError('Verification link is missing or expired — please try logging in directly.')
@@ -32,7 +38,12 @@ export default function AuthCallback() {
     }
 
     setSession(accessToken, refreshToken)
-    navigate('/dashboard', { replace: true })
+
+    if (type === 'recovery') {
+      navigate('/settings?reason=reset', { replace: true })
+    } else {
+      navigate('/dashboard', { replace: true })
+    }
   }, [])
 
   return (

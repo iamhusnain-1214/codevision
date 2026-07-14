@@ -17,6 +17,7 @@ Gemini's free tier is getting tight.
 
 import logging
 
+import db
 import gemini_service
 import grok_service
 from ai_cache import get_cached, set_cached
@@ -34,6 +35,7 @@ def _run_with_fallback(feature, cache_parts, gemini_fn, grok_fn):
     if cached is not None:
         result = dict(cached)
         result["source"] = "cache"
+        db.log_fehm_request(feature, "cache")
         return result
 
     gemini_error = None
@@ -42,6 +44,7 @@ def _run_with_fallback(feature, cache_parts, gemini_fn, grok_fn):
         result = dict(result)
         result["source"] = "gemini"
         set_cached(feature, *cache_parts, value=result)
+        db.log_fehm_request(feature, "gemini")
         return result
     except gemini_service.GeminiError as e:
         gemini_error = str(e)
@@ -53,12 +56,12 @@ def _run_with_fallback(feature, cache_parts, gemini_fn, grok_fn):
         result["source"] = "grok"
         result["gemini_error"] = gemini_error  # surfaced for transparency, not shown as a hard error
         set_cached(feature, *cache_parts, value=result)
+        db.log_fehm_request(feature, "grok", error=f"Gemini fell back: {gemini_error}")
         return result
     except grok_service.GrokError as e:
-        raise AIServiceError(
-            f"Both AI providers are currently unavailable. "
-            f"Gemini: {gemini_error} | Grok: {e}"
-        )
+        combined_error = f"Gemini: {gemini_error} | Grok: {e}"
+        db.log_fehm_request(feature, "failed", error=combined_error)
+        raise AIServiceError(f"Both AI providers are currently unavailable. {combined_error}")
 
 
 def explain_problem(problem_text):

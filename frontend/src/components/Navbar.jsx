@@ -25,12 +25,15 @@ export default function Navbar({ minimal = false }) {
               ['Complexity', '/complexity'],
               ['Race', '/race'],
               ['Fehm', '/fehm'],
+              ['Requests', '/requests'],
+              ['Settings', '/settings'],
+              ...(user?.is_admin ? [['Admin', '/admin/requests'], ['Algorithms', '/admin/algorithms'], ['Users', '/admin/users'], ['Health', '/admin/health'], ['Moderation', '/admin/moderation'], ['Analytics', '/admin/analytics']] : []),
             ].map(([label, path]) => (
               <Link
                 key={path}
                 to={path}
                 className="px-3.5 py-2 rounded-lg transition-colors hover:bg-[var(--raised)]"
-                style={{ color: path === '/fehm' ? 'var(--accent)' : 'var(--ink-muted)' }}
+                style={{ color: path === '/fehm' ? 'var(--accent)' : path.startsWith('/admin') ? '#E0574F' : 'var(--ink-muted)' }}
               >
                 {label}
               </Link>

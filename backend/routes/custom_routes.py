@@ -31,6 +31,19 @@ def run_custom_trace(current_user_id):
     else:
         return jsonify({"error": f"Unsupported language '{language}'"}), 400
 
+    # Log EVERY submission for Phase 5 moderation -- unlike save_run below
+    # (only called on success), this always fires so failing/suspicious
+    # submissions are visible to admins too. A submission whose error
+    # mentions "timeout"/"timed out" is classified as status=timeout
+    # rather than a generic error, since that's specifically what the
+    # unresolved GDB sandbox issue (see project notes) would produce.
+    error_message = result.get("error")
+    if error_message:
+        status = "timeout" if "timeout" in error_message.lower() or "timed out" in error_message.lower() else "error"
+    else:
+        status = "success"
+    db.log_custom_submission(current_user_id, language, code, status, error_message)
+
     if "trace" in result:
         db.save_run(current_user_id, "custom_code", language, {"code": code}, result["trace"])
 
